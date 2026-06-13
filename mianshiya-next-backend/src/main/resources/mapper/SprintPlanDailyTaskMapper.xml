@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yupi.mianshiya.mapper.SprintPlanDailyTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.yupi.mianshiya.model.entity.SprintPlanDailyTask">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="sprintPlanId" column="sprintPlanId" jdbcType="BIGINT"/>
+        <result property="dayNumber" column="dayNumber" jdbcType="INTEGER"/>
+        <result property="questionIds" column="questionIds" jdbcType="VARCHAR"/>
+        <result property="postIds" column="postIds" jdbcType="VARCHAR"/>
+        <result property="mockGoal" column="mockGoal" jdbcType="VARCHAR"/>
+        <result property="isCompleted" column="isCompleted" jdbcType="TINYINT"/>
+        <result property="userId" column="userId" jdbcType="BIGINT"/>
+        <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+        <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,sprintPlanId,dayNumber,questionIds,postIds,mockGoal,
+        isCompleted,userId,createTime,updateTime,isDelete
+    </sql>
+</mapper>

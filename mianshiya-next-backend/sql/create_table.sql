@@ -95,3 +95,43 @@ create table if not exists mock_interview
     isDelete       tinyint  default 0                 not null comment '是否删除（逻辑删除）',
     index idx_userId (userId)
 ) comment '模拟面试' collate = utf8mb4_unicode_ci;
+
+-- 功能扩展：面试冲刺计划
+-- 冲刺计划表
+create table if not exists sprint_plan
+(
+    id              bigint auto_increment comment 'id' primary key,
+    title           varchar(256)                       not null comment '计划标题',
+    totalDays       int                                not null comment '计划总天数（7或14）',
+    questionBankIds varchar(1024)                      null comment '题库 id 列表（JSON 数组）',
+    tags            varchar(1024)                      null comment '目标标签列表（JSON 数组）',
+    config          text                               null comment '计划配置信息（JSON）',
+    status          int      default 0                 not null comment '状态（0-进行中、1-已完成、2-已放弃）',
+    userId          bigint                             not null comment '创建用户 id',
+    startDate       date                               not null comment '计划开始日期',
+    endDate         date                               not null comment '计划结束日期',
+    createTime      datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime      datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete        tinyint  default 0                 not null comment '是否删除',
+    index idx_userId (userId),
+    index idx_userId_status (userId, status)
+) comment '面试冲刺计划' collate = utf8mb4_unicode_ci;
+
+-- 冲刺计划每日任务表
+create table if not exists sprint_plan_daily_task
+(
+    id           bigint auto_increment comment 'id' primary key,
+    sprintPlanId bigint                             not null comment '冲刺计划 id',
+    dayNumber    int                                not null comment '第几天（从1开始）',
+    questionIds  varchar(2048)                      null comment '题目 id 列表（JSON 数组）',
+    postIds      varchar(2048)                      null comment '推荐帖子 id 列表（JSON 数组）',
+    mockGoal     varchar(512)                       null comment '模拟面试目标描述',
+    isCompleted  tinyint  default 0                 not null comment '是否完成（0-未完成、1-已完成）',
+    userId       bigint                             not null comment '创建用户 id',
+    createTime   datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete     tinyint  default 0                 not null comment '是否删除',
+    index idx_sprintPlanId (sprintPlanId),
+    index idx_userId (userId),
+    UNIQUE (sprintPlanId, dayNumber)
+) comment '面试冲刺计划每日任务' collate = utf8mb4_unicode_ci;

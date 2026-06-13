@@ -66,6 +66,12 @@ public class QuestionEsDTO implements Serializable {
     private Date updateTime;
 
     /**
+     * 编辑时间
+     */
+    @Field(type = FieldType.Date, format = {}, pattern = DATE_TIME_PATTERN)
+    private Date editTime;
+
+    /**
      * 是否删除
      */
     private Integer isDelete;

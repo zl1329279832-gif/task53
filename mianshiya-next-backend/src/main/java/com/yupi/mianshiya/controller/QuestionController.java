@@ -110,9 +110,8 @@ public class QuestionController {
         if (!oldQuestion.getUserId().equals(user.getId()) && !userService.isAdmin(request)) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
-        // 操作数据库
-        boolean result = questionService.removeById(id);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        // 操作数据库（复用批量删除逻辑，同时清理题库关联）
+        questionService.batchDeleteQuestions(java.util.Collections.singletonList(id));
         return ResultUtils.success(true);
     }
 

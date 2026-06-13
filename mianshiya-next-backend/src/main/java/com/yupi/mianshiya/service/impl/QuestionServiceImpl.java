@@ -256,12 +256,28 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
      */
     @Override
     public Page<Question> searchFromEs(QuestionQueryRequest questionQueryRequest) {
+        // 题库过滤：通过关联表子查询获取题目 ID 集合（与 MySQL 路径一致）
+        Long questionBankId = questionQueryRequest.getQuestionBankId();
+        Set<Long> questionIdSet = null;
+        if (questionBankId != null) {
+            LambdaQueryWrapper<QuestionBankQuestion> lqw = Wrappers.lambdaQuery(QuestionBankQuestion.class)
+                    .select(QuestionBankQuestion::getQuestionId)
+                    .eq(QuestionBankQuestion::getQuestionBankId, questionBankId);
+            List<QuestionBankQuestion> qbqList = questionBankQuestionService.list(lqw);
+            if (CollUtil.isEmpty(qbqList)) {
+                // 题库为空，直接返回空页
+                return new Page<>(questionQueryRequest.getCurrent(), questionQueryRequest.getPageSize(), 0);
+            }
+            questionIdSet = qbqList.stream()
+                    .map(QuestionBankQuestion::getQuestionId)
+                    .collect(Collectors.toSet());
+        }
+
         // 获取参数
         Long id = questionQueryRequest.getId();
         Long notId = questionQueryRequest.getNotId();
         String searchText = questionQueryRequest.getSearchText();
         List<String> tags = questionQueryRequest.getTags();
-        Long questionBankId = questionQueryRequest.getQuestionBankId();
         Long userId = questionQueryRequest.getUserId();
         // 注意，ES 的起始页为 0
         int current = questionQueryRequest.getCurrent() - 1;
@@ -282,8 +298,9 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         if (userId != null) {
             boolQueryBuilder.filter(QueryBuilders.termQuery("userId", userId));
         }
-        if (questionBankId != null) {
-            boolQueryBuilder.filter(QueryBuilders.termQuery("questionBankId", questionBankId));
+        // 题库过滤：使用关联表子查询得到的题目 ID 集合
+        if (questionIdSet != null) {
+            boolQueryBuilder.filter(QueryBuilders.termsQuery("id", questionIdSet));
         }
         // 必须包含所有标签
         if (CollUtil.isNotEmpty(tags)) {
@@ -291,12 +308,10 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
                 boolQueryBuilder.filter(QueryBuilders.termQuery("tags", tag));
             }
         }
-        // 按关键词检索
+        // 按关键词检索（仅搜索 title 和 content，与 MySQL 路径保持一致）
         if (StringUtils.isNotBlank(searchText)) {
-            // title = '' or content = '' or answer = ''
             boolQueryBuilder.should(QueryBuilders.matchQuery("title", searchText));
             boolQueryBuilder.should(QueryBuilders.matchQuery("content", searchText));
-            boolQueryBuilder.should(QueryBuilders.matchQuery("answer", searchText));
             boolQueryBuilder.minimumShouldMatch(1);
         }
         // 排序
@@ -313,19 +328,25 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
                 .withPageable(pageRequest)
                 .withSorts(sortBuilder)
                 .build();
-        SearchHits<QuestionEsDTO> searchHits = elasticsearchRestTemplate.search(searchQuery, QuestionEsDTO.class);
-        // 复用 MySQL / MyBatis Plus 的分页对象，封装返回结果
-        Page<Question> page = new Page<>();
-        page.setTotal(searchHits.getTotalHits());
-        List<Question> resourceList = new ArrayList<>();
-        if (searchHits.hasSearchHits()) {
-            List<SearchHit<QuestionEsDTO>> searchHitList = searchHits.getSearchHits();
-            for (SearchHit<QuestionEsDTO> questionEsDTOSearchHit : searchHitList) {
-                resourceList.add(QuestionEsDTO.dtoToObj(questionEsDTOSearchHit.getContent()));
+        // 执行 ES 查询，失败时降级为数据库查询
+        try {
+            SearchHits<QuestionEsDTO> searchHits = elasticsearchRestTemplate.search(searchQuery, QuestionEsDTO.class);
+            // 复用 MySQL / MyBatis Plus 的分页对象，封装返回结果
+            Page<Question> page = new Page<>();
+            page.setTotal(searchHits.getTotalHits());
+            List<Question> resourceList = new ArrayList<>();
+            if (searchHits.hasSearchHits()) {
+                List<SearchHit<QuestionEsDTO>> searchHitList = searchHits.getSearchHits();
+                for (SearchHit<QuestionEsDTO> questionEsDTOSearchHit : searchHitList) {
+                    resourceList.add(QuestionEsDTO.dtoToObj(questionEsDTOSearchHit.getContent()));
+                }
             }
+            page.setRecords(resourceList);
+            return page;
+        } catch (Exception e) {
+            log.warn("ES 查询失败，降级为数据库查询: {}", e.getMessage());
+            return listQuestionByPage(questionQueryRequest);
         }
-        page.setRecords(resourceList);
-        return page;
     }
 
     /**

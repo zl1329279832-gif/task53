@@ -2,6 +2,7 @@ package com.yupi.mianshiya.job.once;
 
 import cn.hutool.core.collection.CollUtil;
 import com.yupi.mianshiya.esdao.QuestionEsDao;
+import com.yupi.mianshiya.mapper.QuestionMapper;
 import com.yupi.mianshiya.model.dto.question.QuestionEsDTO;
 import com.yupi.mianshiya.model.entity.Question;
 import com.yupi.mianshiya.service.QuestionService;
@@ -10,6 +11,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,12 +30,15 @@ public class FullSyncQuestionToEs implements CommandLineRunner {
     private QuestionService questionService;
 
     @Resource
+    private QuestionMapper questionMapper;
+
+    @Resource
     private QuestionEsDao questionEsDao;
 
     @Override
     public void run(String... args) {
-        // 全量获取题目（数据量不大的情况下使用）
-        List<Question> questionList = questionService.list();
+        // 全量获取题目（包括已被删除的数据，确保 ES 中已删除题目的 isDelete 状态同步）
+        List<Question> questionList = questionMapper.listQuestionWithDelete(new Date(0));
         if (CollUtil.isEmpty(questionList)) {
             return;
         }

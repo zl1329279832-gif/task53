@@ -21,4 +21,10 @@ public interface QuestionMapper extends BaseMapper<Question> {
     @Select("select * from question where updateTime >= #{minUpdateTime}")
     List<Question> listQuestionWithDelete(Date minUpdateTime);
 
+    /**
+     * 查询所有题目列表（包括已被删除的数据）
+     */
+    @Select("select * from question")
+    List<Question> listAllQuestionWithDelete();
+
 }

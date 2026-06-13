@@ -229,7 +229,7 @@ public class QuestionBankQuestionServiceImpl extends ServiceImpl<QuestionBankQue
         List<QuestionBankQuestion> existQuestionList = this.list(lambdaQueryWrapper);
         // 已存在于题库中的题目 id
         Set<Long> existQuestionIdSet = existQuestionList.stream()
-                .map(QuestionBankQuestion::getId)
+                .map(QuestionBankQuestion::getQuestionId)
                 .collect(Collectors.toSet());
         // 已存在于题库中的题目 id，不需要再次添加
         validQuestionIdList = validQuestionIdList.stream().filter(questionId -> {
@@ -324,8 +324,7 @@ public class QuestionBankQuestionServiceImpl extends ServiceImpl<QuestionBankQue
             LambdaQueryWrapper<QuestionBankQuestion> lambdaQueryWrapper = Wrappers.lambdaQuery(QuestionBankQuestion.class)
                     .eq(QuestionBankQuestion::getQuestionId, questionId)
                     .eq(QuestionBankQuestion::getQuestionBankId, questionBankId);
-            boolean result = this.remove(lambdaQueryWrapper);
-            ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "从题库移除题目失败");
+            this.remove(lambdaQueryWrapper);
         }
     }
 

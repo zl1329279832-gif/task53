@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yupi.mianshiya.common.ErrorCode;
 import com.yupi.mianshiya.constant.CommonConstant;
+import com.yupi.mianshiya.esdao.QuestionEsDao;
 import com.yupi.mianshiya.exception.BusinessException;
 import com.yupi.mianshiya.exception.ThrowUtils;
 import com.yupi.mianshiya.manager.AiManager;
@@ -65,6 +66,9 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
 
     @Resource
     private ElasticsearchRestTemplate elasticsearchRestTemplate;
+
+    @Resource
+    private QuestionEsDao questionEsDao;
 
     @Resource
     private AiManager aiManager;
@@ -283,7 +287,23 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
             boolQueryBuilder.filter(QueryBuilders.termQuery("userId", userId));
         }
         if (questionBankId != null) {
-            boolQueryBuilder.filter(QueryBuilders.termQuery("questionBankId", questionBankId));
+            // questionBankId 不在 ES 中，需要先从关联表查出题目 id
+            LambdaQueryWrapper<QuestionBankQuestion> bankQueryWrapper = Wrappers.lambdaQuery(QuestionBankQuestion.class)
+                    .select(QuestionBankQuestion::getQuestionId)
+                    .eq(QuestionBankQuestion::getQuestionBankId, questionBankId);
+            List<QuestionBankQuestion> bankQuestions = questionBankQuestionService.list(bankQueryWrapper);
+            if (CollUtil.isNotEmpty(bankQuestions)) {
+                Set<Long> questionIdSet = bankQuestions.stream()
+                        .map(QuestionBankQuestion::getQuestionId)
+                        .collect(Collectors.toSet());
+                boolQueryBuilder.filter(QueryBuilders.termsQuery("id", questionIdSet));
+            } else {
+                // 题库为空，直接返回空结果
+                Page<Question> emptyPage = new Page<>();
+                emptyPage.setTotal(0);
+                emptyPage.setRecords(new ArrayList<>());
+                return emptyPage;
+            }
         }
         // 必须包含所有标签
         if (CollUtil.isNotEmpty(tags)) {
@@ -340,12 +360,22 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         for (Long questionId : questionIdList) {
             boolean result = this.removeById(questionId);
             ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "删除题目失败");
-            // 移除题目题库关系
-            // 构造查询
+            // 移除题目题库关系（没有关联也不报错）
             LambdaQueryWrapper<QuestionBankQuestion> lambdaQueryWrapper = Wrappers.lambdaQuery(QuestionBankQuestion.class)
                     .eq(QuestionBankQuestion::getQuestionId, questionId);
-            result = questionBankQuestionService.remove(lambdaQueryWrapper);
-            ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "删除题目题库关联失败");
+            questionBankQuestionService.remove(lambdaQueryWrapper);
+        }
+        // 同步删除 ES 数据（尽力而为）
+        try {
+            List<QuestionEsDTO> esDTOList = questionIdList.stream().map(id -> {
+                QuestionEsDTO dto = new QuestionEsDTO();
+                dto.setId(id);
+                dto.setIsDelete(1);
+                return dto;
+            }).collect(Collectors.toList());
+            questionEsDao.saveAll(esDTOList);
+        } catch (Exception e) {
+            log.warn("批量删除题目同步 ES 失败: {}", e.getMessage());
         }
     }
 
@@ -422,6 +452,30 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         String userPrompt = String.format("面试题：%s", questionTitle);
         // 3. 调用 AI 生成题解
         return aiManager.doChat(systemPrompt, userPrompt);
+    }
+
+    @Override
+    public void syncQuestionToEs(Question question) {
+        try {
+            QuestionEsDTO questionEsDTO = QuestionEsDTO.objToDto(question);
+            questionEsDao.save(questionEsDTO);
+        } catch (Exception e) {
+            log.warn("同步题目 {} 到 ES 失败: {}", question.getId(), e.getMessage());
+        }
+    }
+
+    @Override
+    public void cleanupAfterQuestionDelete(Long questionId) {
+        // 移除题目题库关联
+        LambdaQueryWrapper<QuestionBankQuestion> lambdaQueryWrapper = Wrappers.lambdaQuery(QuestionBankQuestion.class)
+                .eq(QuestionBankQuestion::getQuestionId, questionId);
+        questionBankQuestionService.remove(lambdaQueryWrapper);
+        // 同步删除 ES 数据（尽力而为）
+        try {
+            questionEsDao.deleteById(questionId);
+        } catch (Exception e) {
+            log.warn("删除题目 {} 的 ES 数据失败: {}", questionId, e.getMessage());
+        }
     }
 
 }

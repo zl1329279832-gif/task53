@@ -85,6 +85,8 @@ public class QuestionController {
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         // 返回新写入的数据 id
         long newQuestionId = question.getId();
+        // 同步到 ES
+        questionService.syncQuestionToEs(question);
         return ResultUtils.success(newQuestionId);
     }
 
@@ -113,6 +115,8 @@ public class QuestionController {
         // 操作数据库
         boolean result = questionService.removeById(id);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        // 清理关联数据和 ES
+        questionService.cleanupAfterQuestionDelete(id);
         return ResultUtils.success(true);
     }
 
@@ -144,6 +148,11 @@ public class QuestionController {
         // 操作数据库
         boolean result = questionService.updateById(question);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        // 同步到 ES（重新查询完整数据）
+        Question fullQuestion = questionService.getById(id);
+        if (fullQuestion != null) {
+            questionService.syncQuestionToEs(fullQuestion);
+        }
         return ResultUtils.success(true);
     }
 
@@ -352,6 +361,11 @@ public class QuestionController {
         // 操作数据库
         boolean result = questionService.updateById(question);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        // 同步到 ES（重新查询完整数据）
+        Question fullQuestion = questionService.getById(id);
+        if (fullQuestion != null) {
+            questionService.syncQuestionToEs(fullQuestion);
+        }
         return ResultUtils.success(true);
     }
 
@@ -363,11 +377,15 @@ public class QuestionController {
         long size = questionQueryRequest.getPageSize();
         // 限制爬虫
         ThrowUtils.throwIf(size > 200, ErrorCode.PARAMS_ERROR);
-        // todo 取消注释开启 ES（须先配置 ES）
-        // 查询 ES
-        // Page<Question> questionPage = questionService.searchFromEs(questionQueryRequest);
-        // 查询数据库（作为没有 ES 的降级方案）
-        Page<Question> questionPage = questionService.listQuestionByPage(questionQueryRequest);
+        Page<Question> questionPage;
+        try {
+            // 优先查询 ES
+            questionPage = questionService.searchFromEs(questionQueryRequest);
+        } catch (Exception e) {
+            // ES 查询失败，降级查询数据库
+            log.warn("ES 查询失败，降级查询数据库: {}", e.getMessage());
+            questionPage = questionService.listQuestionByPage(questionQueryRequest);
+        }
         return ResultUtils.success(questionService.getQuestionVOPage(questionPage, request));
     }
 

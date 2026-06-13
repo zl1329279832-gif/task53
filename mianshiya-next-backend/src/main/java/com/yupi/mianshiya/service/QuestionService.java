@@ -85,4 +85,18 @@ public interface QuestionService extends IService<Question> {
      * @return ture / false
      */
     boolean aiGenerateQuestions(String questionType, int number, User user);
+
+    /**
+     * 同步题目到 ES（尽力而为，不影响主流程）
+     *
+     * @param question 题目
+     */
+    void syncQuestionToEs(Question question);
+
+    /**
+     * 删除题目后清理关联数据（题库关联 + ES）
+     *
+     * @param questionId 题目 id
+     */
+    void cleanupAfterQuestionDelete(Long questionId);
 }
